@@ -1,10 +1,10 @@
 import os # py needs oss to read eviroment variables 
 from dotenv import load_dotenv # to read .env
-from fastapi import FastAPI ,Body , Header , Query , Depends , HTTPException , Response# for app = fastapi()
+from fastapi import FastAPI ,Body , Header , Query , Depends , HTTPException , Response , Security# for app = fastapi()
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder # as supabase return non json objects so we encode it to be able to jsonfy it 
 from supabase import create_client , Client # Create_client-> fun conncetion/client betweeen python w supabase  , Client --> type used to indecate that the var supabase is a Supabase Client 
-
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 #load varibles from .env
 load_dotenv()
 
@@ -21,32 +21,20 @@ supabase: Client = create_client(SUPABASE_URL , SUPABASE_KEY) #create a supabase
 #create fastapi app
 app = FastAPI()
 
+security = HTTPBearer()
+
 #dependecies
-async def verify_user(authorization = Header(None)):
-    if not authorization:
-        raise HTTPException(
-            status_code=401,
-            detail={"error": "Access token required"}
-        )
-    if not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401 , detail={"error":"Access token required "})
-    
-    token = authorization.removeprefix("Bearer ").strip()
-    
-    if not token:
-          raise HTTPException(status_code=401,detail={"error": "Access token required"})
-    
-    
+async def verify_user(credentials : HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+
     try:
-            response = supabase.auth.get_user(token)
-    
+         response= supabase.auth.get_user(token)
     except Exception:
-            raise HTTPException(status_code=401, detail={"error":"Unautherized"})
-
-    return {"user":response.user, "token":token}
-
-
+         raise HTTPException(status_code=401, detail="Invalid or expired token" )
     
+    return response.user
+
+
 #home route
 @app.get("/")
 def home ():
@@ -94,12 +82,11 @@ async def public_info():
     return {"message":"welcom starnger! this info is public "}
 
 @app.get("/protected/profile")
-async def protected_profile(auth = Depends(verify_user)):
-    user = auth["user"]
+async def protected_profile( user = Depends(verify_user)):
     return {
-        "id":user.id
-        , "email":user.email,
-        "created_at":user.created_at
+        "id": user.id,
+        "email": user.email,
+        "created_at": user.created_at
     }
 
 @app.get("/protected/dashboard")
