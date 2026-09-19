@@ -1,6 +1,6 @@
 import os # py needs oss to read eviroment variables 
 from dotenv import load_dotenv # to read .env
-from fastapi import FastAPI ,Body , Header , Query , Depends , HTTPException# for app = fastapi()
+from fastapi import FastAPI ,Body , Header , Query , Depends , HTTPException , Response# for app = fastapi()
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder # as supabase return non json objects so we encode it to be able to jsonfy it 
 from supabase import create_client , Client # Create_client-> fun conncetion/client betweeen python w supabase  , Client --> type used to indecate that the var supabase is a Supabase Client 
@@ -26,30 +26,27 @@ async def verify_user(authorization = Header(None)):
     if not authorization:
         raise HTTPException(
             status_code=401,
-            content={"error": "Access token required"}
+            detail={"error": "Access token required"}
         )
     if not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401 , content={"error":"Access token required "})
+            raise HTTPException(status_code=401 , detail={"error":"Access token required "})
     
     token = authorization.removeprefix("Bearer ").strip()
     
     if not token:
-          raise HTTPException(status_code=401,content={"error": "Access token required"})
+          raise HTTPException(status_code=401,detail={"error": "Access token required"})
     
     
     try:
             response = supabase.auth.get_user(token)
     
     except Exception:
-            raise HTTPException(status_code=401, content={"error":"Unautherized"})
+            raise HTTPException(status_code=401, detail={"error":"Unautherized"})
 
-    return response.user
+    return {"user":response.user, "token":token}
+
+
     
-    
-
-
-
-
 #home route
 @app.get("/")
 def home ():
@@ -97,7 +94,8 @@ async def public_info():
     return {"message":"welcom starnger! this info is public "}
 
 @app.get("/protected/profile")
-async def protected_profile(user = Depends(verify_user)):
+async def protected_profile(auth = Depends(verify_user)):
+    user = auth["user"]
     return {
         "id":user.id
         , "email":user.email,
@@ -105,14 +103,18 @@ async def protected_profile(user = Depends(verify_user)):
     }
 
 @app.get("/protected/dashboard")
-async def protected_dashboard(user = Depends(verify_user)):
-
+async def protected_dashboard(auth = Depends(verify_user)):
+    user = auth["user"]
     return {
         "message": "Welcome to your dashboard",
         "user_id": user.id,
         "email": user.email
     }
 
+@app.post("/auth/logout",status_code=204)
+async def logout(auth = Depends(verify_user)):
+     supabase.auth.sign_out()
+     return Response(status_code=204)
 
 # @app.post("/auth/reset-password")
 # async def reset_password(data: dict = Body(...)):
